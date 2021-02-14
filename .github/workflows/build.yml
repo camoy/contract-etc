@@ -1,0 +1,19 @@
+on: [push, pull_request]
+name: build
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - uses: actions/cache@v1
+        with:
+          path: ~/.racket
+          key: ${{ runner.os }}-raco-${{ hashFiles('**/info.rkt') }}
+      - uses: Bogdanp/setup-racket@v0.6
+        with:
+          architecture: 'x64'
+          distribution: 'full'
+          variant: 'regular'
+          version: '7.8'
+      - run: raco pkg install --auto || true
+      - run: raco test --drdr .
