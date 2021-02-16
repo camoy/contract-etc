@@ -3,7 +3,7 @@
 ;; General
 
 (define collection "contract-etc")
-(define pkg-desc "Contract miscellanea.")
+(define pkg-desc "Miscellaneous contracts.")
 (define version "0.0")
 (define pkg-authors '(camoy))
 (define scribblings '(("scribblings/contract-etc.scrbl" ())))
@@ -14,7 +14,8 @@
   '("base"))
 
 (define build-deps
-  '("chk-lib"
+  '("sandbox-lib"
+    "chk-lib"
     "scribble-lib"
     "racket-doc"
     "rackunit-lib"
