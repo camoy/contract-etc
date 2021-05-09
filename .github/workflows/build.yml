@@ -16,6 +16,6 @@ jobs:
           variant: 'regular'
           version: '8.1'
       - run: raco pkg install --auto --no-setup --skip-installed
-      - run: raco setup contract-etc --fast-clean
+      - run: raco setup --fast-clean contract-etc
       - run: raco setup contract-etc
       - run: raco test --drdr .
