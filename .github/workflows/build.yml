@@ -17,5 +17,6 @@ jobs:
           version: '8.1'
       - run: raco pkg install --auto --no-setup --skip-installed
       - run: raco setup --fast-clean contract-etc
-      - run: raco setup contract-etc
+      # We specifically don't want to `raco setup` here because
+      # we need control over environment variables for testing.
       - run: raco test --drdr .
