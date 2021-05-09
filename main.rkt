@@ -5,20 +5,22 @@
 
 (require racket/contract)
 (provide
+ (all-from-out racket/contract)
  (contract-out
   [dynamic->d (-> (unconstrained-domain-> contract?) contract?)]
   [self/c (->* ((-> any/c contract?))
                (#:chaperone? boolean?)
                contract?)])
-
  apply/c
- return/c)
+ return/c
+ :)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; require
 
 (require (for-syntax racket/base
-                     syntax/parse)
+                     syntax/parse
+                     racket/syntax)
          racket/match)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -128,6 +130,28 @@
   (syntax-parse stx
     [(_ d:decl ...+)
      #'(apply/return-contract #f (list d.norm ...))]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; annotations
+
+;; Only enable contracts if the given flag is true at compile time.
+(define-for-syntax contracts-on?
+  (getenv "RKT_PRIVATE_CONTRACTS"))
+
+;; Annotates a definition with a contract. The contract is enabled for clients
+;; of the module, as well as the test submodule.
+(define-syntax (: stx)
+  (syntax-parse stx
+    [(_ ?name:id ?ctc)
+     #:declare ?ctc (expr/c #'contract?)
+     #:with ?indirect (generate-temporary #'?name)
+     (cond
+       [contracts-on?
+        (syntax-local-lift-module-end-declaration #'(define ?indirect ?name))
+        #'(begin
+            (provide (contract-out [?name ?ctc]))
+            (module+ test (define/contract ?name ?ctc ?indirect)))]
+       [else #'(provide ?name)])]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; tests

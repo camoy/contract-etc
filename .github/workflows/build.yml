@@ -7,13 +7,15 @@ jobs:
       - uses: actions/checkout@master
       - uses: actions/cache@v1
         with:
-          path: ~/.racket
+          path: ~/.local/share/racket
           key: ${{ runner.os }}-raco-${{ hashFiles('**/info.rkt') }}
       - uses: Bogdanp/setup-racket@v0.6
         with:
           architecture: 'x64'
           distribution: 'full'
           variant: 'regular'
-          version: '7.8'
-      - run: raco pkg install --auto || true
+          version: '8.1'
+      - run: raco pkg install --auto --no-setup --skip-installed
+      - run: raco setup contract-etc --fast-clean
+      - run: raco setup contract-etc
       - run: raco test --drdr .
