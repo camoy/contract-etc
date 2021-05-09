@@ -102,3 +102,14 @@ compatibility may not be maintained.
   (define/contract f (apply-at-most-once/c) void)
   (f)
   (eval:error (f))]
+
+@defform[(: id contract-expr)]{
+  If the @indexed-envvar{RKT_PRIVATE_CONTRACTS} environment variable
+  is set at compile time,
+  then this annotation provides @racket[id] with the given contract.
+  Additionally,
+  the references to @racket[id] within the test submodule
+  are contracted.
+  If the environment variable isn't set,
+  then @racket[id] is provided without any contracts.
+}
