@@ -15,9 +15,7 @@
                      racket/syntax
                      syntax/parse
                      syntax/id-table
-                     syntax/parse/lib/function-header
-
-                     debug-scopes)
+                     syntax/parse/lib/function-header)
          racket/contract
          racket/contract/option)
 
