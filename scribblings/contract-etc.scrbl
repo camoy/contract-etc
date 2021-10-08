@@ -5,7 +5,9 @@
 
 @require[@for-label[racket/base
                     racket/contract
-                    contract-etc]
+                    racket/contract/option
+                    contract-etc
+                    (only-in contract-etc/annotate :)]
          racket/sandbox
          scribble/example]
 
@@ -15,9 +17,11 @@
 @(define evaluator
    (make-base-eval
      '(require racket/contract
+               racket/contract/option
                racket/function
                racket/match
-               contract-etc)))
+               contract-etc
+               contract-etc/annotate)))
 
 @;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 @;; document
@@ -26,6 +30,8 @@
 @author{Cameron Moy}
 
 @defmodule[contract-etc]
+
+@section{Combinators}
 
 @margin-note{
 This library is experimental;
@@ -103,13 +109,38 @@ compatibility may not be maintained.
   (f)
   (eval:error (f))]
 
+@section{Annotations}
+
+@defmodule[contract-etc/annotate]
+
 @defform[(: id contract-expr)]{
-  If the @indexed-envvar{RKT_PRIVATE_CONTRACTS} environment variable
-  is set at compile time,
-  then this annotation provides @racket[id] with the given contract.
-  Additionally,
-  the references to @racket[id] within the test submodule
-  are contracted.
-  If the environment variable isn't set,
-  then @racket[id] is provided without any contracts.
+  Annotates the definition of @racket[id] with a contract.
+  The first-order part of the contract is checked immediately.
+  For a flat contract, nothing else happens. For a higher-order
+  contract, an @racketlink[option/c]{option} of
+  @racket[contract-expr] is attached to @racket[id].
+
+  Where, and whether, that option is enabled depends
+  on the environment variables present at run time.
+
+  @itemize[
+    @item{If @indexed-envvar{CONTRACT_EXERCISE} is set,
+      then the option is enabled by default.}
+
+    @item{If @indexed-envvar{CONTRACT_EXERCISE_TEST} is
+      set, then the option is enabled by default only
+      in the test submodule of the current file.}
+
+    @item{If neither are set, then the option is disabled.}]
+
+  @examples[#:eval evaluator
+    (: sub2 (-> number? number?))
+    (eval:error (define sub2 "subtract two"))
+
+    (: add2 (-> integer? integer?))
+    (define (add2 x)
+      (+ x 2))
+
+    (add2 1.5)
+    (eval:error ((exercise-option add2) 1.5))]
 }
