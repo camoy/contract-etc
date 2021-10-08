@@ -11,10 +11,12 @@
 ;; Dependencies
 
 (define deps
-  '("base"))
+  '("option-contract-lib"
+    "base"))
 
 (define build-deps
-  '("sandbox-lib"
+  '("option-contract-doc"
+    "sandbox-lib"
     "chk-lib"
     "scribble-lib"
     "racket-doc"
