@@ -11,13 +11,18 @@
                        (#:chaperone? boolean?)
                        contract?)])
          apply/c
-         return/c)
+         return/c
+         exercise-out
+         waive-out)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; require
 
 (require (for-syntax racket/base
-                     syntax/parse)
+                     racket/syntax
+                     syntax/parse
+                     racket/provide-transform)
+         racket/contract/option
          racket/match)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -127,6 +132,36 @@
   (syntax-parse stx
     [(_ d:decl ...+)
      #'(apply/return-contract #f (list d.norm ...))]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; provide transformers
+
+(begin-for-syntax
+  ;; Applies `proc` to the provides before exporting.
+  (define (make-option-provide-pre-transformer proc)
+    (make-provide-pre-transformer
+     (λ (stx modes)
+       (syntax-parse stx
+         [(_ ?x ...)
+          #:with (?x-new ...) (generate-temporaries #'(?x ...))
+          ;; Since we're directly applying `proc`, we can't use the standard
+          ;; `syntax-local-lift-expression` as you'd get an unbound identifier on
+          ;; the RHS. Instead, we define everything at the end of the module and
+          ;; then provide there.
+          (syntax-local-lift-module-end-declaration
+           #`(begin
+               (define ?x-new (#,proc ?x)) ...
+               (provide (rename-out [?x-new ?x] ...))))
+          ;; This is an empty export.
+          #'(combine-out)])))))
+
+;; Provide options after exercising.
+(define-syntax exercise-out
+  (make-option-provide-pre-transformer #'exercise-option))
+
+;; Provide options after waiving.
+(define-syntax waive-out
+  (make-option-provide-pre-transformer #'waive-option))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; tests

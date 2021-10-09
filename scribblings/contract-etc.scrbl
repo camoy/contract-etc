@@ -109,15 +109,51 @@ compatibility may not be maintained.
   (f)
   (eval:error (f))]
 
+@section{@racket[provide] Forms}
+
+@defform[(exercise-out id ...)]{
+  @racketlink[exercise-option]{Exercises} the given options before providing.
+
+  @examples[#:eval evaluator
+    (module inner racket
+      (require contract-etc
+               racket/contract/option)
+      (provide (exercise-out foo)
+               (rename-out [foo unchecked-foo]))
+      (define/contract (foo)
+        (option/c (-> integer?))
+        "nan"))
+
+    (require 'inner)
+    (unchecked-foo)
+    (eval:error (foo))]
+}
+
+@defform[(waive-out id ...)]{
+  Similar to @racket[exercise-out], except it @racketlink[waive-option]{waives}
+  the given options before providing.
+}
+
 @section{Annotations}
 
 @defmodule[contract-etc/annotate]
 
+Typically, programmers will only attach contracts at module or library
+boundaries with @racket[contract-out] and not use contracts at the
+definition level with @racket[define/contract]. This is because fine-grained
+contract boundaries cause major performance problems due to the overhead
+of repeated checking.
+
+Contract annotations provide a convenient means of enabling and disabling
+internal contract checks as needed. For example, you may decide that for
+local testing you want to disable internal contract checks, but enable them
+during continuous integration testing.
+
 @defform[(: id contract-expr)]{
   Annotates the definition of @racket[id] with a contract.
   The first-order part of the contract is checked immediately.
-  For a flat contract, nothing else happens. For a higher-order
-  contract, an @racketlink[option/c]{option} of
+  For a flat contract, nothing else needs to happen. For a
+  higher-order contract, an @racketlink[option/c]{option} of
   @racket[contract-expr] is attached to @racket[id].
 
   Where, and whether, that option is enabled depends
@@ -131,11 +167,12 @@ compatibility may not be maintained.
       set, then the option is enabled by default only
       in the test submodule of the current file.}
 
-    @item{If neither are set, then the option is disabled.}]
+    @item{If neither are set, then the option is disabled
+      by default.}]
 
   @examples[#:eval evaluator
     (: sub2 (-> number? number?))
-    (eval:error (define sub2 "subtract two"))
+    (eval:error (define (sub2) 42))
 
     (: add2 (-> integer? integer?))
     (define (add2 x)
