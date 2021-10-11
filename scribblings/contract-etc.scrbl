@@ -41,7 +41,7 @@ compatibility may not be maintained.
 @defproc[(dynamic->d [make-contract (-> (unconstrained-domain-> contract?)
                                         contract?)])
           contract?]{
-  This contract protected a procedure.
+  This contract protects a procedure.
   It applies @racket[make-contract]
   when the procedure is called with its arguments.
   The return value is expected to be a function contract
