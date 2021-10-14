@@ -4,8 +4,13 @@
 @;; require
 
 @require[@for-label[racket/base
+                    racket/class
                     racket/contract
                     racket/contract/option
+                    racket/function
+                    racket/list
+                    racket/match
+                    racket/string
                     contract-etc
                     (only-in contract-etc/annotate :)]
          racket/sandbox
@@ -16,10 +21,13 @@
 
 @(define evaluator
    (make-base-eval
-     '(require racket/contract
+     '(require racket/class
+               racket/contract
                racket/contract/option
                racket/function
+               racket/list
                racket/match
+               racket/string
                contract-etc
                contract-etc/annotate)))
 
@@ -108,6 +116,30 @@ compatibility may not be maintained.
   (define/contract f (apply-at-most-once/c) void)
   (f)
   (eval:error (f))]
+
+@defproc[(class-object/c [class-contract contract?]
+                         [object-contract contract?])
+          contract?]{
+  Creates a class contract that acts exactly like @racket[class-contract],
+  except that instantiated objects are additionally constrained by
+  @racket[object-contract].
+}
+
+@examples[#:eval evaluator
+  (define cat%/c
+    (class-object/c
+      (class/c [meow (->m integer? string?)])
+      (object/c [meow (->m positive? string?)])))
+  (define/contract cat%
+    cat%/c
+    (class object%
+      (define/public (meow n)
+        (string-join (map (const "meow") (range n))))
+      (super-new)))
+  (define leo (new cat%))
+  (eval:error (send leo meow 1/2))
+  (eval:error (send leo meow -2))
+  (send leo meow 4)]
 
 @section{@racket[provide] Forms}
 

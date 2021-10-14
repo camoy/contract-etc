@@ -9,7 +9,8 @@
           [dynamic->d (-> (unconstrained-domain-> contract?) contract?)]
           [self/c (->* ((-> any/c contract?))
                        (#:chaperone? boolean?)
-                       contract?)])
+                       contract?)]
+          [class-object/c (-> contract? contract? contract?)])
          apply/c
          return/c
          exercise-out
@@ -22,7 +23,12 @@
                      racket/syntax
                      syntax/parse
                      racket/provide-transform)
+         (only-in racket/private/class-internal
+                  struct:class
+                  class-make-object
+                  set-class-make-object!)
          racket/contract/option
+         racket/class
          racket/match)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -164,11 +170,52 @@
   (make-option-provide-pre-transformer #'waive-option))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; `class-object/c`
+
+;; Constructs a class contract with an additional object constraint.
+(define (class-object/c class-ctc obj-ctc)
+  (make-contract
+   #:name
+   `(class-object/c ,(contract-name class-ctc)
+                    ,(contract-name obj-ctc))
+   #:first-order class?
+   #:late-neg-projection
+   (class-object/c-late-neg
+    (get/build-late-neg-projection class-ctc)
+    (get/build-late-neg-projection obj-ctc))))
+
+;; Late neg projection for `class-object/c`.
+(define (class-object/c-late-neg class-proj obj-proj)
+  (λ (blm)
+    (define class-blm (blame-add-context blm "the class contract of"))
+    (define class-proj+blm (class-proj class-blm))
+    (define obj-blm (blame-add-context blm "the object contract of"))
+    (define obj-proj+blm (obj-proj obj-blm))
+    (λ (val neg)
+      (impersonate-struct
+       (class-proj+blm val neg)
+       struct:class
+       class-make-object
+       (impersonate-make-object obj-proj+blm neg)
+       set-class-make-object!
+       set-class-make-object!))))
+
+;; Impersonator for the `make-object` field of the internal class struct.
+(define (impersonate-make-object obj-proj+blm neg)
+  (λ (self mk-object)
+    (impersonate-procedure
+     mk-object
+     (λ ()
+       (λ (res)
+         (obj-proj+blm res neg))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; tests
 
 (module+ test
   (require chk
-           racket/function)
+           racket/function
+           racket/set)
 
   (define increasing/c
     (dynamic->d
@@ -220,4 +267,45 @@
           (contract (return/c [integer? "hi"]) values 'pos 'neg))
    #:x (bad-return 2)
    "blaming: neg"
+
+   #:do (define woody%
+          (class object%
+            (define/public (draw who)
+              (format "reach for the sky, ~a" who))
+            (super-new)))
+   #:do (define next!
+          (let ([x -1])
+            (λ ()
+              (set! x (add1 x))
+              x)))
+   #:do (define-values (put! get)
+          (let ([store null])
+            (values (λ (x) (set! store (cons x store)))
+                    (λ () (reverse store)))))
+   #:do (define ((symbol-put? x y) v)
+          (and (symbol? v)
+               (put! (list x y))))
+   #:do (define/contract woody+c%
+          (class-object/c
+           (self/c
+            (λ (x)
+              (define n (next!))
+              (class/c [draw (->m (symbol-put? n 'class-draw) string?)])))
+           (self/c
+            (λ (x)
+              (define n (next!))
+              (object/c [draw (->m (symbol-put? n 'object-draw) string?)]))))
+          woody%)
+
+   #:do (define w1 (new woody+c%))
+   #:do (define w2 (new woody+c%))
+   (send w1 draw 'alice)
+   "reach for the sky, alice"
+   (send w2 draw 'bob)
+   "reach for the sky, bob"
+   #:x (send w1 draw 42)
+   "draw: contract violation"
+   #:eq set=?
+   (get)
+   '((1 object-draw) (0 class-draw) (2 object-draw) (0 class-draw))
    ))
