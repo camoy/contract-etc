@@ -90,19 +90,19 @@ compatibility may not be maintained.
 
 @deftogether[
   (@defform[
-    (apply/c [contract-expr to-protect-expr maybe-positive] ...+)
+    (apply/c [contract-expr to-protect-expr maybe-swap] ...+)
     #:grammar
-    [(maybe-positive (code:line)
-                     (code:line #:positive))]]
+    [(maybe-swap (code:line)
+                 (code:line #:swap))]]
    @defform[
-    (return/c [contract-expr to-protect-expr maybe-positive] ...+)
+    (return/c [contract-expr to-protect-expr maybe-swap] ...+)
     #:grammar
-    [(maybe-positive (code:line)
-                     (code:line #:positive))]])]{
+    [(maybe-swap (code:line)
+                 (code:line #:swap))]])]{
   These contracts expect a procedure
   and sends a constant value through another contract
   when the procedure is applied or returns respectively.
-  The @racket[#:positive] option swaps the blame for
+  The @racket[#:swap] option swaps the blame for
   violation of the contract.
 }
 

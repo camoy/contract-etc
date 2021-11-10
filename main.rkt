@@ -71,47 +71,60 @@
 ;; `apply/c` and `return/c` functions
 
 ;; A `decl` represents an `apply/c` or `return/c` declaration.
-;;   - `contract` receieves a value on application or return.
-;;   - `value` is the value to send to the contract.
-;;   - `positive?` indicates if the blame should be positive.
-(struct decl (contract value positive?))
+;;   - `contract` receieves a value on application or return,
+;;   - `value` is the value to send to the contract,
+;;   - `swap?` indicates if the blame should be swapped.
+(struct decl (contract value swap?))
 
 ;; Constructor for `apply/c` and `return/c`.
 (define (apply/return-contract apply? decls)
+  (define name (if apply? 'apply/c 'return/c))
   (make-chaperone-contract
-   #:name (if apply? 'apply/c 'return/c)
+   #:name name
    #:first-order procedure?
-   #:late-neg-projection (apply/return-late-neg apply? decls)))
+   #:late-neg-projection (apply/return-late-neg name apply? decls)))
 
 ;; Constructor for the late neg of `apply/c` and `return/c`. It wraps a
 ;; procedure's call and return events, pushing those through the associated
 ;; contract.
-(define (((apply/return-late-neg apply? decls) blm) proc neg)
-  (define blm* (blame-add-missing-party blm neg))
-  (define (plain-proc . args)
-    (when apply?
-      (apply/return-attach decls blm*))
-    (define (result-wrapper-proc . res)
-      (unless apply?
-        (apply/return-attach decls blm*))
-      (apply values res))
-    (apply values (cons result-wrapper-proc args)))
-  (chaperone-procedure
-   proc
-   (make-keyword-procedure
-    (λ (kws kw-args . args)
-      (apply plain-proc (append args (map list kws kw-args))))
-    plain-proc)))
+(define (apply/return-late-neg name apply? decls)
+  (define late-negs (apply/return-late-negs name decls))
+  (define vals (map decl-value decls))
+  (λ (blm)
+    (define projs (apply/return-projs apply? decls late-negs blm))
+    (λ (proc neg)
+      (define (plain-proc . args)
+        (when apply? (apply/return-attach projs vals neg))
+        (define (result-wrapper-proc . res)
+          (unless apply? (apply/return-attach projs vals neg))
+          (apply values res))
+        (apply values (cons result-wrapper-proc args)))
+      (chaperone-procedure
+       proc
+       (make-keyword-procedure
+        (λ (kws kw-args . args)
+          (apply plain-proc (append args (map list kws kw-args))))
+        plain-proc)))))
+
+;; Constructs late neg projections for each declaration.
+(define (apply/return-late-negs name decls)
+  (for/list ([decl (in-list decls)])
+    (define ctc (coerce-contract name (decl-contract decl)))
+    (get/build-late-neg-projection ctc)))
+
+;; Constructs projections for each declaration from late negs.
+(define (apply/return-projs apply? decls late-negs blm)
+  (for/list ([decl (in-list decls)]
+             [late-neg (in-list late-negs)])
+    (let* ([blm (if apply? (blame-swap blm) blm)]
+           [blm (if (decl-swap? decl) (blame-swap blm) blm)])
+      (late-neg blm))))
 
 ;; Attaches the contracts to the given values.
-(define (apply/return-attach decls blm)
-  (for ([decl (in-list decls)])
-    (match-define (list ctc val pos?) decl)
-    (define blame-swap-maybe (if pos? values blame-swap))
-    (define blm* (blame-swap-maybe blm))
-    (define pos (blame-positive blm*))
-    (define neg (blame-negative blm*))
-    (contract ctc val pos neg)))
+(define (apply/return-attach projs vals neg)
+  (for ([proj (in-list projs)]
+        [val (in-list vals)])
+    (proj val neg)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; `apply/c` and `return/c` macros
@@ -121,11 +134,9 @@
   (define-splicing-syntax-class decl
     #:description "apply/c or return/c declaration"
     #:attributes (norm)
-    (pattern [ctc val:expr (~optional (~and #:positive positive))]
+    (pattern [ctc val:expr (~optional (~and #:swap swap?))]
              #:declare ctc (expr/c #'contract? #:name "contract")
-             #:with norm #'(list ctc.c
-                                 val
-                                 (~? 'positive #f)))))
+             #:with norm #'(decl ctc.c val (~? 'swap? #f)))))
 
 ;; Trigger contract attachment on application.
 (define-syntax (apply/c stx)
@@ -252,7 +263,7 @@
    #:x (bad-apply-neg 2)
    "blaming: neg"
    #:do (define bad-apply-pos
-          (contract (apply/c [integer? "hi" #:positive]) values 'pos 'neg))
+          (contract (apply/c [integer? "hi" #:swap?]) values 'pos 'neg))
    #:x (bad-apply-pos 2)
    "blaming: pos"
 
@@ -266,7 +277,7 @@
    #:do (define bad-return
           (contract (return/c [integer? "hi"]) values 'pos 'neg))
    #:x (bad-return 2)
-   "blaming: neg"
+   "blaming: pos"
 
    #:do (define woody%
           (class object%
