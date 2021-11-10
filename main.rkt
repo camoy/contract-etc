@@ -263,7 +263,7 @@
    #:x (bad-apply-neg 2)
    "blaming: neg"
    #:do (define bad-apply-pos
-          (contract (apply/c [integer? "hi" #:swap?]) values 'pos 'neg))
+          (contract (apply/c [integer? "hi" #:swap]) values 'pos 'neg))
    #:x (bad-apply-pos 2)
    "blaming: pos"
 
