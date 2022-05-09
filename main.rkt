@@ -11,6 +11,7 @@
                        (#:chaperone? boolean?)
                        contract?)]
           [class-object/c (-> contract? contract? contract?)])
+         self-rec/c
          apply/c
          return/c
          exercise-out
@@ -66,6 +67,21 @@
      (λ (arg neg-party)
        (define late-neg-proj (get/build-late-neg-projection (make-ctc arg)))
        ((late-neg-proj blm) arg neg-party)))))
+
+;; This allows one to attach a contract to a value that depends on the carrier
+;; itself, where the carrier is protected.
+(define-syntax (self-rec/c stx)
+  (syntax-parse stx
+    [(_ name:id e:expr
+        (~optional (~and #:chaperone (~bind [make #'make-chaperone-contract]))
+                   #:defaults ([make #'make-contract])))
+     #'(make
+        #:late-neg-projection
+        (λ (blm)
+          (λ (arg neg-party)
+            (letrec ([late-neg-proj (get/build-late-neg-projection e)]
+                     [name ((late-neg-proj blm) arg neg-party)])
+              name))))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; `apply/c` and `return/c` functions
