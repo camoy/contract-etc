@@ -24,13 +24,14 @@
                      racket/syntax
                      syntax/parse
                      racket/provide-transform)
-         (only-in racket/private/class-internal
-                  struct:class
-                  class-make-object
-                  set-class-make-object!)
+         (prefix-in int: racket/private/class-internal)
          racket/contract/option
          racket/class
-         racket/match)
+         racket/match
+         rackunit)
+
+;; Needed for `class-object/c`.
+(require/expose racket/private/class-internal (fetch-concrete-class))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; `dynamic->d`
@@ -211,7 +212,8 @@
     (get/build-late-neg-projection class-ctc)
     (get/build-late-neg-projection obj-ctc))))
 
-;; Late neg projection for `class-object/c`.
+;; Late neg projection for `class-object/c`. This is a nasty hack due
+;; to how class interfaces work.
 (define (class-object/c-late-neg class-proj obj-proj)
   (λ (blm)
     (define class-blm (blame-add-context blm "the class contract of"))
@@ -219,22 +221,55 @@
     (define obj-blm (blame-add-context blm "the object contract of"))
     (define obj-proj+blm (obj-proj obj-blm))
     (λ (val neg)
-      (impersonate-struct
-       (class-proj+blm val neg)
-       struct:class
-       class-make-object
-       (impersonate-make-object obj-proj+blm neg)
-       set-class-make-object!
-       set-class-make-object!))))
-
-;; Impersonator for the `make-object` field of the internal class struct.
-(define (impersonate-make-object obj-proj+blm neg)
-  (λ (self mk-object)
-    (impersonate-procedure
-     mk-object
-     (λ ()
-       (λ (res)
-         (obj-proj+blm res neg))))))
+      (define cls (class-proj+blm val neg))
+      (define name (int:class-name cls))
+      (define make-class
+        (int:make-naming-constructor int:struct:class name "class"))
+      ;; I would use `struct-copy` but the struct identifier isn't exported.
+      (make-class
+       name
+       (int:class-pos cls)
+       (int:class-supers cls)
+       (int:class-self-interface cls)
+       (int:class-insp-mk cls)
+       (int:class-obj-inspector cls)
+       (int:class-method-width cls)
+       (int:class-method-ht cls)
+       (int:class-method-ids cls)
+       (int:class-abstract-ids cls)
+       ;; Pretend that there's no interface contracts so that
+       ;; `fetch-concrete-class` won't clobber `make-object`.
+       null
+       (int:class-ictc-classes cls)
+       (int:class-methods cls)
+       (int:class-super-methods cls)
+       (int:class-int-methods cls)
+       (int:class-beta-methods cls)
+       (int:class-meth-flags cls)
+       (int:class-inner-projs cls)
+       (int:class-dynamic-idxs cls)
+       (int:class-dynamic-projs cls)
+       (int:class-field-width cls)
+       (int:class-field-pub-width cls)
+       (int:class-field-ht cls)
+       (int:class-field-ids cls)
+       (int:class-all-field-ids cls)
+       (int:class-struct:object cls)
+       (int:class-object? cls)
+       ;; Wrap call to `fetch-concrete-class` in object contract check.
+       (let ([make (int:class-make-object (fetch-concrete-class cls blm))])
+         (λ ()
+           (obj-proj+blm (make) neg)))
+       (int:class-field-ref cls)
+       (int:class-field-set! cls)
+       (int:class-init-args cls)
+       (int:class-init-mode cls)
+       (int:class-init cls)
+       (int:class-orig-cls cls)
+       (int:class-serializer cls)
+       (int:class-fixup cls)
+       (int:class-check-undef? cls)
+       (int:class-no-super-init? cls)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; tests
@@ -335,4 +370,23 @@
    #:eq set=?
    (get)
    '((1 object-draw) (0 class-draw) (2 object-draw) (0 class-draw))
+
+   #:do (define foo<%>
+          (interface ()
+            [foo (->m positive? any)]))
+   #:do (define/contract foo%
+          (class-object/c
+           (class/c)
+           (object/c
+            [foo (->m even? any/c)]))
+          (class* object% (foo<%>)
+            (super-new)
+            (define/public (foo x) x)))
+
+   #:do (define f (new foo%))
+   #:x (send f foo -10)
+   "expected: positive?"
+
+   #:x (send f foo 3)
+   "expected: even?"
    ))
