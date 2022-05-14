@@ -10,7 +10,8 @@
           [self/c (->* ((-> any/c contract?))
                        (#:chaperone? boolean?)
                        contract?)]
-          [class-object/c (-> contract? contract? contract?)])
+          [class-object/c (-> contract? contract? contract?)]
+          [dependent-class-object/c (-> contract? procedure? contract?)])
          self-rec/c
          apply/c
          return/c
@@ -27,6 +28,7 @@
          (prefix-in int: racket/private/class-internal)
          racket/contract/option
          racket/class
+         racket/dict
          racket/match
          rackunit)
 
@@ -51,7 +53,7 @@
           '(expected: "procedure?" given: "~e")
           proc))
        (λ args
-         (define ctc (apply mk-ctc args))
+         (define ctc (coerce-contract 'dynamic->d (apply mk-ctc args)))
          (define late-neg (get/build-late-neg-projection ctc))
          (apply ((late-neg blm) proc neg) args))))))
 
@@ -66,7 +68,8 @@
    #:late-neg-projection
    (λ (blm)
      (λ (arg neg-party)
-       (define late-neg-proj (get/build-late-neg-projection (make-ctc arg)))
+       (define ctc (coerce-contract 'self/c (make-ctc arg)))
+       (define late-neg-proj (get/build-late-neg-projection ctc))
        ((late-neg-proj blm) arg neg-party)))))
 
 ;; This allows one to attach a contract to a value that depends on the carrier
@@ -80,7 +83,8 @@
         #:late-neg-projection
         (λ (blm)
           (λ (arg neg-party)
-            (letrec ([late-neg-proj (get/build-late-neg-projection e)]
+            (letrec ([e* (coerce-contract 'self-rec/c e)]
+                     [late-neg-proj (get/build-late-neg-projection e*)]
                      [name ((late-neg-proj blm) arg neg-party)])
               name))))]))
 
@@ -202,18 +206,17 @@
 
 ;; Constructs a class contract with an additional object constraint.
 (define (class-object/c class-ctc obj-ctc)
+  (define class-ctc* (coerce-contract 'class-object/c class-ctc))
+  (define obj-ctc* (coerce-contract 'class-object/c obj-ctc))
   (make-contract
    #:name
-   `(class-object/c ,(contract-name class-ctc)
-                    ,(contract-name obj-ctc))
+   `(class-object/c ,(contract-name class-ctc*) ,(contract-name obj-ctc*))
    #:first-order class?
    #:late-neg-projection
    (class-object/c-late-neg
-    (get/build-late-neg-projection class-ctc)
-    (get/build-late-neg-projection obj-ctc))))
+    (get/build-late-neg-projection class-ctc*)
+    (get/build-late-neg-projection obj-ctc*))))
 
-;; Late neg projection for `class-object/c`. This is a nasty hack due
-;; to how class interfaces work.
 (define (class-object/c-late-neg class-proj obj-proj)
   (λ (blm)
     (define class-blm (blame-add-context blm "the class contract of"))
@@ -222,54 +225,126 @@
     (define obj-proj+blm (obj-proj obj-blm))
     (λ (val neg)
       (define cls (class-proj+blm val neg))
-      (define name (int:class-name cls))
-      (define make-class
-        (int:make-naming-constructor int:struct:class name "class"))
-      ;; I would use `struct-copy` but the struct identifier isn't exported.
-      (make-class
-       name
-       (int:class-pos cls)
-       (int:class-supers cls)
-       (int:class-self-interface cls)
-       (int:class-insp-mk cls)
-       (int:class-obj-inspector cls)
-       (int:class-method-width cls)
-       (int:class-method-ht cls)
-       (int:class-method-ids cls)
-       (int:class-abstract-ids cls)
-       ;; Pretend that there's no interface contracts so that
-       ;; `fetch-concrete-class` won't clobber `make-object`.
-       null
-       (int:class-ictc-classes cls)
-       (int:class-methods cls)
-       (int:class-super-methods cls)
-       (int:class-int-methods cls)
-       (int:class-beta-methods cls)
-       (int:class-meth-flags cls)
-       (int:class-inner-projs cls)
-       (int:class-dynamic-idxs cls)
-       (int:class-dynamic-projs cls)
-       (int:class-field-width cls)
-       (int:class-field-pub-width cls)
-       (int:class-field-ht cls)
-       (int:class-field-ids cls)
-       (int:class-all-field-ids cls)
-       (int:class-struct:object cls)
-       (int:class-object? cls)
-       ;; Wrap call to `fetch-concrete-class` in object contract check.
-       (let ([make (int:class-make-object (fetch-concrete-class cls blm))])
-         (λ ()
-           (obj-proj+blm (make) neg)))
-       (int:class-field-ref cls)
-       (int:class-field-set! cls)
-       (int:class-init-args cls)
-       (int:class-init-mode cls)
-       (int:class-init cls)
-       (int:class-orig-cls cls)
-       (int:class-serializer cls)
-       (int:class-fixup cls)
-       (int:class-check-undef? cls)
-       (int:class-no-super-init? cls)))))
+      (define make-object*
+        ;; Wrap call to `fetch-concrete-class` in object contract check.
+        (let ([make (int:class-make-object (fetch-concrete-class cls blm))])
+          (λ ()
+           (obj-proj+blm (make) neg))))
+      (copy-class-struct cls make-object* (int:class-init cls)))))
+
+;; I would use `struct-copy` but the struct identifier isn't exported.
+(define (copy-class-struct cls make-object* init*)
+  (define name (int:class-name cls))
+  ((int:make-naming-constructor int:struct:class name "class")
+   name
+   (int:class-pos cls)
+   (int:class-supers cls)
+   (int:class-self-interface cls)
+   (int:class-insp-mk cls)
+   (int:class-obj-inspector cls)
+   (int:class-method-width cls)
+   (int:class-method-ht cls)
+   (int:class-method-ids cls)
+   (int:class-abstract-ids cls)
+   ;; Pretend that there's no interface contracts so that
+   ;; `fetch-concrete-class` won't clobber `make-object`.
+   null
+   (int:class-ictc-classes cls)
+   (int:class-methods cls)
+   (int:class-super-methods cls)
+   (int:class-int-methods cls)
+   (int:class-beta-methods cls)
+   (int:class-meth-flags cls)
+   (int:class-inner-projs cls)
+   (int:class-dynamic-idxs cls)
+   (int:class-dynamic-projs cls)
+   (int:class-field-width cls)
+   (int:class-field-pub-width cls)
+   (int:class-field-ht cls)
+   (int:class-field-ids cls)
+   (int:class-all-field-ids cls)
+   (int:class-struct:object cls)
+   (int:class-object? cls)
+   make-object*
+   (int:class-field-ref cls)
+   (int:class-field-set! cls)
+   (int:class-init-args cls)
+   (int:class-init-mode cls)
+   init*
+   (int:class-orig-cls cls)
+   (int:class-serializer cls)
+   (int:class-fixup cls)
+   (int:class-check-undef? cls)
+   (int:class-no-super-init? cls)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; `dependent-class-object/c`
+
+;; Constructs a class contract with an additional object constraint that depends
+;; on the initialization arguments.
+(define (dependent-class-object/c class-ctc make-obj-ctc)
+  (define class-ctc* (coerce-contract 'dependent-class-object/c class-ctc))
+  (make-contract
+   #:name
+   `(dependent-class-object/c
+     ,(contract-name class-ctc*)
+     ,(object-name make-obj-ctc))
+   #:first-order class?
+   #:late-neg-projection
+   (dependent-class-object/c-late-neg
+    (get/build-late-neg-projection class-ctc*)
+    make-obj-ctc)))
+
+;; The difference betweenn this an `class-object/c` is that we grab the
+;; initialization arguments (which come after object construction) and
+;; travel back in time with the use of `call/cc` to communication that
+;; information to the object constructor. This is the only way, I'm
+;; pretty sure, to do this without modifying `class-internal.rkt`.
+(define (dependent-class-object/c-late-neg class-proj make-obj-ctc)
+  (λ (blm)
+    (define class-blm (blame-add-context blm "the class contract of"))
+    (define class-proj+blm (class-proj class-blm))
+    (define obj-blm (blame-add-context blm "the object contract of"))
+    (λ (val neg)
+      (define kont #f)
+      (define cls (class-proj+blm val neg))
+      (define make-object*
+        (let ([make (int:class-make-object (fetch-concrete-class cls blm))])
+          (λ ()
+            (define inits (call/cc (λ (k) (set! kont k) #f)))
+            (cond
+              [inits
+               (define-values (kw-dict rest-args) (inits->args inits))
+               (define obj-ctc
+                 (coerce-contract
+                  'dependent-class-object/c
+                  (keyword-apply/dict make-obj-ctc kw-dict rest-args)))
+               (define obj-proj (get/build-late-neg-projection obj-ctc))
+               (define obj-proj+blm (obj-proj obj-blm))
+               (set! kont #f)
+               (obj-proj+blm (make) neg)]
+              [else (make)]))))
+      (define init*
+        (let ([init! (int:class-init cls)])
+          (λ (o make-super c inited? leftovers named-args)
+            (when kont (kont named-args))
+            (init! o make-super c inited? leftovers named-args))))
+      (copy-class-struct cls make-object* init*))))
+
+;; Convert the dictionary of initialization arguments into two return values:
+;; a keyword argument dictionary and a list of rest arguments.
+(define (inits->args inits)
+  (for/fold ([kw-dict null]
+             [rest-args null]
+             #:result (values kw-dict (reverse rest-args)))
+            ([(k v) (in-dict inits)])
+    (cond
+      [k (define k* (symbol->keyword k))
+         (values (cons (cons k* v) kw-dict) rest-args)]
+      [else (values kw-dict (cons v rest-args))])))
+
+(define (symbol->keyword sym)
+  (string->keyword (symbol->string sym)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; tests
@@ -389,4 +464,25 @@
 
    #:x (send f foo 3)
    "expected: even?"
+
+   #:do (define/contract bar%
+          (dependent-class-object/c
+           (class/c)
+           (λ (#:hello hi #:goodbye bye . more)
+             (object/c
+              [bar (->m (λ (x) (equal? x hi))
+                        (λ (y) (equal? y bye))
+                        (λ (z) (equal? z more))
+                        any)])))
+          (class* object% ()
+            (init hello goodbye)
+            (init-rest more)
+            (super-new)
+            (define/public (bar x y z)
+              #t)))
+
+   #:do (define b (new bar% [goodbye 11] [hello 10]))
+   #:do (define c (make-object bar% 10 11 12 13))
+   #:t (send b bar 10 11 '())
+   #:t (send c bar 10 11 (list 12 13))
    ))
