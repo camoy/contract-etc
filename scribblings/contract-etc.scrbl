@@ -141,6 +141,31 @@ compatibility may not be maintained.
   (eval:error (send leo meow -2))
   (send leo meow 4)]
 
+@defproc[(dependent-class-object/c [class-contract contract?]
+                                   [make-object-contract procedure?])
+          contract?]{
+  Like @racket[class-object/c] except the second argument is a procedure
+  that accepts the initialization arguments (as keyword arguments or
+  rest arguments) and returns an object contract.
+}
+
+@examples[#:eval evaluator
+  (define dog%/c
+    (dependent-class-object/c
+      (class/c [bark (->m string? string?)])
+      (λ (#:sound sound)
+        (object/c
+          [bark (->m string? (λ (s) (equal? s sound)))]))))
+  (define/contract dog%
+    dog%/c
+    (class object%
+      (init sound)
+      (define/public (bark x) x)
+      (super-new)))
+  (define spot (new dog% [sound "woof"]))
+  (eval:error (send spot bark "meow"))
+  (send spot bark "woof")]
+
 @section{@racket[provide] Forms}
 
 @defform[(exercise-out id ...)]{

@@ -12,7 +12,6 @@
                        contract?)]
           [class-object/c (-> contract? contract? contract?)]
           [dependent-class-object/c (-> contract? procedure? contract?)])
-         self-rec/c
          apply/c
          return/c
          exercise-out
@@ -71,22 +70,6 @@
        (define ctc (coerce-contract 'self/c (make-ctc arg)))
        (define late-neg-proj (get/build-late-neg-projection ctc))
        ((late-neg-proj blm) arg neg-party)))))
-
-;; This allows one to attach a contract to a value that depends on the carrier
-;; itself, where the carrier is protected.
-(define-syntax (self-rec/c stx)
-  (syntax-parse stx
-    [(_ name:id e:expr
-        (~optional (~and #:chaperone (~bind [make #'make-chaperone-contract]))
-                   #:defaults ([make #'make-contract])))
-     #'(make
-        #:late-neg-projection
-        (λ (blm)
-          (λ (arg neg-party)
-            (letrec ([e* (coerce-contract 'self-rec/c e)]
-                     [late-neg-proj (get/build-late-neg-projection e*)]
-                     [name ((late-neg-proj blm) arg neg-party)])
-              name))))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; `apply/c` and `return/c` functions
