@@ -11,7 +11,8 @@
 ;; Dependencies
 
 (define deps
-  '("option-contract-lib"
+  '("rackunit-lib"
+    "option-contract-lib"
     "base"))
 
 (define build-deps
