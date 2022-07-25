@@ -30,11 +30,18 @@
    (bar-ho))
  "hi")
 
+;; make sure we don't break submodule order
+(module+ examples
+  (provide (all-defined-out))
+  (define forty-two 42))
+
 ;; inside `test` submodule
 
 (module+ test
+  (require (submod ".." examples))
+
   (: baz-fo integer?)
-  (define baz-fo 42)
+  (define baz-fo forty-two)
 
   (: baz-ho (-> integer?))
   (define (baz-ho) "hi")

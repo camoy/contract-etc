@@ -89,10 +89,14 @@
 (define-syntax (define-in-test stx)
   (syntax-parse stx
     [(_ ?name:id)
+     #:do (syntax-local-lift-module-end-declaration
+           #'(module+ test
+               (require (submod ".." #%annotate-protected))))
      #:with ?alias (generate-temporary 'alias)
      #'(begin
          (define ?alias ?name)
-         (module+ test
+         (module+ #%annotate-protected
+           (provide ?name)
            (define ?name (exercise-from-env ?alias))))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
