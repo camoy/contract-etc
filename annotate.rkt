@@ -14,6 +14,7 @@
                      racket/function
                      racket/syntax
                      syntax/parse
+                     syntax/strip-context
                      syntax/id-table
                      syntax/parse/lib/function-header)
          racket/contract
@@ -89,9 +90,12 @@
 (define-syntax (define-in-test stx)
   (syntax-parse stx
     [(_ ?name:id)
-     #:do (syntax-local-lift-module-end-declaration
-           #'(module+ test
-               (require (submod ".." #%annotate-protected))))
+     #:do
+     [(syntax-local-lift-module-end-declaration
+       (replace-context
+        #'?name
+        #'(module+ test
+            (require (submod ".." #%annotate-protected)))))]
      #:with ?alias (generate-temporary 'alias)
      #'(begin
          (define ?alias ?name)
