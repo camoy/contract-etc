@@ -10,12 +10,20 @@
           [self/c (->* ((-> any/c contract?))
                        (#:chaperone? boolean?)
                        contract?)]
+          [elementof/c (-> contract? (-> any/c any/c) flat-contract?)]
+          [case->i (-> arrow-contract? ... contract?)]
           [class-object/c (-> contract? contract? contract?)]
           [dependent-class-object/c (-> contract? procedure? contract?)])
          apply/c
          return/c
          exercise-out
          waive-out)
+
+(define arrow-contract?
+  (flat-named-contract
+   'arrow-contract?
+   (λ (x)
+     (or (arr:base->? x) (->i? x)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; require
@@ -25,14 +33,20 @@
                      syntax/parse
                      racket/provide-transform)
          (prefix-in int: racket/private/class-internal)
+         (prefix-in arr: racket/contract/private/arrow-common)
          racket/contract/option
          racket/class
          racket/dict
          racket/match
+         racket/unsafe/ops
          rackunit)
 
 ;; Needed for `class-object/c`.
 (require/expose racket/private/class-internal (fetch-concrete-class))
+
+;; Needed for `case->i`.
+(require/expose racket/contract/private/arr-i
+                (->i-mandatory-args ->i-opt-args ->i-rest ->i?))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; `dynamic->d`
@@ -70,6 +84,67 @@
        (define ctc (coerce-contract 'self/c (make-ctc arg)))
        (define late-neg-proj (get/build-late-neg-projection ctc))
        ((late-neg-proj blm) arg neg-party)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; `elementof/c`
+
+;; Contract that applies to some piece of a data structure, projected by `get`.
+(define (elementof/c ctc get)
+  (define ctc* (coerce-contract/f ctc))
+  (define lnp (get/build-late-neg-projection ctc*))
+  (make-flat-contract
+   #:name `(elementof/c ,(contract-name ctc*))
+   #:late-neg-projection
+   (λ (blm)
+     (define lnp+blm (lnp blm))
+     (λ (val neg)
+       (lnp+blm (get val) neg)
+       val))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; `case->i`
+
+;; Like `case->`, but supports dependent contracts.
+(define (case->i . ctcs)
+  (define mins (map minimum-arity ctcs))
+  (define maxs (map maximum-arity ctcs))
+  (define chap? (andmap chaperone-contract? ctcs))
+  (define make (if chap? make-chaperone-contract make-contract))
+  (define chaperone/impersonate
+    (if chap?
+        unsafe-chaperone-procedure
+        unsafe-impersonate-procedure))
+  (define lnps (map get/build-late-neg-projection ctcs))
+  (make #:name `(case->i ,(map contract-name ctcs))
+        #:late-neg-projection
+        (λ (blm)
+          (define lnps+blm (map (λ (lnp) (lnp blm)) lnps))
+          (λ (val neg)
+            (define fs (map (λ (lnp) (lnp val neg)) lnps+blm))
+            (chaperone/impersonate
+             val
+             (λ args
+               (define n (length args))
+               (for/first ([min-arity (in-list mins)]
+                           [max-arity (in-list maxs)]
+                           [f (in-list fs)]
+                           #:when (and (<= min-arity n max-arity)))
+                 (apply f args))))))))
+
+(define (minimum-arity ctc)
+  (cond
+    [(->i? ctc) (->i-mandatory-args ctc)]
+    [(arr:base->? ctc) (arr:base->-min-arity ctc)]))
+
+(define (maximum-arity ctc)
+  (cond
+    [(->i? ctc)
+     (and (not (->i-rest ctc))
+          (+ (->i-mandatory-args ctc)
+             (->i-opt-args ctc)))]
+    [(arr:base->? ctc)
+     (and (not (arr:base->-rest ctc))
+          (length (arr:base->-doms ctc)))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; `apply/c` and `return/c` functions
@@ -333,7 +408,8 @@
 ;; tests
 
 (module+ test
-  (require chk
+  (require (submod "..")
+           chk
            racket/function
            racket/set)
 
@@ -351,6 +427,55 @@
      (cons/c integer? (-> integer?))))
 
   (chk
+   (contract (elementof/c integer? car) (cons 1 2) 'pos 'neg)
+   (cons 1 2)
+
+   #:x (contract (elementof/c integer? car) (cons "" 2) 'pos 'neg)
+   "promised: integer?"
+
+   #:do (define/contract (f* . args)
+          (case->i (->i ([x integer?]) [_ void?])
+                   (-> integer? string? void?))
+          (void))
+
+   (f* 1) (void)
+   (f* 1 "hi") (void)
+   #:x (f* 1 2) "expected: string?"
+   #:x (case->i (-> integer? integer?) integer?)
+   "expected: arrow-contract?"
+
+   #:do (define (arity-range x)
+          (values (minimum-arity x)
+                  (maximum-arity x)))
+   (arity-range (-> void?))
+   (values 0 0)
+   (arity-range (-> integer? void?))
+   (values 1 1)
+   (arity-range (-> integer? ... void?))
+   (values 0 #f)
+   (arity-range (->* () void?))
+   (values 0 0)
+   (arity-range (->* (integer?) void?))
+   (values 1 1)
+   (arity-range (->* (integer?) (integer?) void?))
+   (values 1 2)
+   (arity-range (->* (integer? integer?) (integer?) void?))
+   (values 2 3)
+   (arity-range (->* (integer? integer?) #:rest any/c void?))
+   (values 2 #f)
+   (arity-range (->i ([x integer?]) [_ void?]))
+   (values 1 1)
+   (arity-range (->i ([x integer?]
+                      [y (x) integer?])
+                     ([z (y) integer?])
+                     [_ void?]))
+   (values 2 3)
+   (arity-range (->i ([x integer?]
+                      [y (x) integer?])
+                     #:rest [r any/c]
+                     [_ void?]))
+   (values 2 #f)
+
    #:do (define/contract add1* increasing/c add1)
    (add1* 42) 43
    #:do (define/contract values* increasing/c values)

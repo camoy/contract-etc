@@ -88,6 +88,35 @@ compatibility may not be maintained.
   (define/contract bad-self cdr-returns-car/c (cons 1 (const 2)))
   (eval:error ((cdr bad-self)))]
 
+@defproc[(elementof/c [contract contract?]
+                      [get-element (-> any/c any/c)])
+         flat-contract?]{
+  Constructs a contract where the result of @racket[get-element]
+  on the protected value is checked against @racket[contract].
+  However, the wrapper (if any) produced by @racket[contract] is
+  discarded.
+}
+
+@examples[#:eval evaluator
+  (define car-is-int? (elementof/c integer? car))
+  (define/contract good-pair car-is-int? (cons 1 2))
+  (eval:error (define/contract bad-pair car-is-int? (cons "hi" 2)))]
+
+@defproc[(case->i [arrow-contract contract?] ...)
+         contract?]{
+  Like @racket[case->], but with support for @racket[->i].
+}
+
+@examples[#:eval evaluator
+  (define/contract might-count
+    (case->i
+      (-> string? integer?)
+      (->i ([s string?] [n (s) (=/c (string-length s))]) [res integer?]))
+    (lambda (s . args) (string-length s)))
+  (might-count "hi")
+  (might-count "hi" 2)
+  (eval:error (might-count "hi" 3))]
+
 @deftogether[
   (@defform[
     (apply/c [contract-expr to-protect-expr maybe-swap] ...+)
