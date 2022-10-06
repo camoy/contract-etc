@@ -10,10 +10,12 @@
           [self/c (->* ((-> any/c contract?))
                        (#:chaperone? boolean?)
                        contract?)]
-          [elementof/c (-> contract? (-> any/c any/c) flat-contract?)]
+          [elementof/c (-> contract? (-> any/c any/c) contract?)]
           [case->i (-> arrow-contract? ... contract?)]
           [class-object/c (-> contract? contract? contract?)]
-          [dependent-class-object/c (-> contract? procedure? contract?)])
+          [dependent-class-object/c (-> contract? procedure? contract?)]
+          [classof/c (-> contract? contract?)]
+          [dependent-classof/c (-> procedure? contract?)])
          apply/c
          return/c
          exercise-out
@@ -91,8 +93,12 @@
 ;; Contract that applies to some piece of a data structure, projected by `get`.
 (define (elementof/c ctc get)
   (define ctc* (coerce-contract/f ctc))
+  (define make
+    (if (chaperone-contract? ctc*)
+        make-chaperone-contract
+        make-contract))
   (define lnp (get/build-late-neg-projection ctc*))
-  (make-flat-contract
+  (make
    #:name `(elementof/c ,(contract-name ctc*))
    #:late-neg-projection
    (λ (blm)
@@ -403,6 +409,15 @@
 
 (define (symbol->keyword sym)
   (string->keyword (symbol->string sym)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; `classof/c` and `dependent-classof/c`
+
+(define (classof/c ctc)
+  (class-object/c (class/c) ctc))
+
+(define (dependent-classof/c proc)
+  (dependent-class-object/c (class/c) proc))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; tests

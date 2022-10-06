@@ -9,12 +9,11 @@ jobs:
         with:
           path: ~/.local/share/racket
           key: ${{ runner.os }}-raco-${{ hashFiles('**/info.rkt') }}
-      - uses: Bogdanp/setup-racket@v0.6
+      - uses: Bogdanp/setup-racket@v1.7
         with:
           architecture: 'x64'
           distribution: 'full'
-          variant: 'regular'
-          version: '8.1'
+          version: 'current'
       - run: raco pkg install --auto --no-setup --skip-installed
       - run: raco setup --fast-clean contract-etc
       # We specifically don't want to `raco setup` here because

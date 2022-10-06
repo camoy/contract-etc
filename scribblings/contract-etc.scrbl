@@ -55,17 +55,17 @@ compatibility may not be maintained.
   The return value is expected to be a function contract
   that is then applied to the procedure,
   and the arguments are then reapplied to that protected procedure.
-}
 
-@examples[#:eval evaluator
-  (define increasing/c
-    (dynamic->d
-      (λ (x)
-        (-> integer? (>/c x)))))
-  (define/contract add1* increasing/c add1)
-  (add1* 42)
-  (define/contract values* increasing/c values)
-  (eval:error (values* 42))]
+  @examples[#:eval evaluator
+    (define increasing/c
+      (dynamic->d
+        (λ (x)
+          (-> integer? (>/c x)))))
+    (define/contract add1* increasing/c add1)
+    (add1* 42)
+    (define/contract values* increasing/c values)
+    (eval:error (values* 42))]
+}
 
 @defproc[(self/c [make-contract (-> any/c contract?)]
                  [#:chaperone? chaperone? boolean? #f])
@@ -75,18 +75,18 @@ compatibility may not be maintained.
   When the contract is attached to a value,
   @racket[make-contract] is applied to it
   and the resulting contract is then attached to that value.
-}
 
-@examples[#:eval evaluator
-  (define cdr-returns-car/c
-    (self/c
-      (λ (p)
-        (match-define (cons x f) p)
-        (cons/c any/c (-> x)))))
-  (define/contract good-self cdr-returns-car/c (cons 1 (const 1)))
-  ((cdr good-self)) 1
-  (define/contract bad-self cdr-returns-car/c (cons 1 (const 2)))
-  (eval:error ((cdr bad-self)))]
+  @examples[#:eval evaluator
+    (define cdr-returns-car/c
+      (self/c
+        (λ (p)
+          (match-define (cons x f) p)
+          (cons/c any/c (-> x)))))
+    (define/contract good-self cdr-returns-car/c (cons 1 (const 1)))
+    ((cdr good-self)) 1
+    (define/contract bad-self cdr-returns-car/c (cons 1 (const 2)))
+    (eval:error ((cdr bad-self)))]
+}
 
 @defproc[(elementof/c [contract contract?]
                       [get-element (-> any/c any/c)])
@@ -95,27 +95,27 @@ compatibility may not be maintained.
   on the protected value is checked against @racket[contract].
   However, the wrapper (if any) produced by @racket[contract] is
   discarded.
-}
 
-@examples[#:eval evaluator
-  (define car-is-int? (elementof/c integer? car))
-  (define/contract good-pair car-is-int? (cons 1 2))
-  (eval:error (define/contract bad-pair car-is-int? (cons "hi" 2)))]
+  @examples[#:eval evaluator
+    (define car-is-int? (elementof/c integer? car))
+    (define/contract good-pair car-is-int? (cons 1 2))
+    (eval:error (define/contract bad-pair car-is-int? (cons "hi" 2)))]
+}
 
 @defproc[(case->i [arrow-contract contract?] ...)
          contract?]{
   Like @racket[case->], but with support for @racket[->i].
-}
 
-@examples[#:eval evaluator
-  (define/contract might-count
-    (case->i
-      (-> string? integer?)
-      (->i ([s string?] [n (s) (=/c (string-length s))]) [res integer?]))
-    (lambda (s . args) (string-length s)))
-  (might-count "hi")
-  (might-count "hi" 2)
-  (eval:error (might-count "hi" 3))]
+  @examples[#:eval evaluator
+    (define/contract might-count
+      (case->i
+        (-> string? integer?)
+        (->i ([s string?] [n (s) (=/c (string-length s))]) [res integer?]))
+      (lambda (s . args) (string-length s)))
+    (might-count "hi")
+    (might-count "hi" 2)
+    (eval:error (might-count "hi" 3))]
+}
 
 @deftogether[
   (@defform[
@@ -133,18 +133,18 @@ compatibility may not be maintained.
   when the procedure is applied or returns respectively.
   The @racket[#:swap] option swaps the blame for
   violation of the contract.
-}
 
-@examples[#:eval evaluator
-  (define (apply-at-most-once/c)
-    (define count 0)
-    (define (incr n)
-      (set! count (+ count n))
-      (<= count 1))
-    (apply/c [incr 1]))
-  (define/contract f (apply-at-most-once/c) void)
-  (f)
-  (eval:error (f))]
+  @examples[#:eval evaluator
+    (define (apply-at-most-once/c)
+      (define count 0)
+      (define (incr n)
+        (set! count (+ count n))
+        (<= count 1))
+      (apply/c [incr 1]))
+    (define/contract f (apply-at-most-once/c) void)
+    (f)
+    (eval:error (f))]
+}
 
 @defproc[(class-object/c [class-contract contract?]
                          [object-contract contract?])
@@ -152,23 +152,27 @@ compatibility may not be maintained.
   Creates a class contract that acts exactly like @racket[class-contract],
   except that instantiated objects are additionally constrained by
   @racket[object-contract].
+
+  @examples[#:eval evaluator
+    (define cat%/c
+      (class-object/c
+        (class/c [meow (->m integer? string?)])
+        (object/c [meow (->m positive? string?)])))
+    (define/contract cat%
+      cat%/c
+      (class object%
+        (define/public (meow n)
+          (string-join (map (const "meow") (range n))))
+        (super-new)))
+    (define leo (new cat%))
+    (eval:error (send leo meow 1/2))
+    (eval:error (send leo meow -2))
+    (send leo meow 4)]
 }
 
-@examples[#:eval evaluator
-  (define cat%/c
-    (class-object/c
-      (class/c [meow (->m integer? string?)])
-      (object/c [meow (->m positive? string?)])))
-  (define/contract cat%
-    cat%/c
-    (class object%
-      (define/public (meow n)
-        (string-join (map (const "meow") (range n))))
-      (super-new)))
-  (define leo (new cat%))
-  (eval:error (send leo meow 1/2))
-  (eval:error (send leo meow -2))
-  (send leo meow 4)]
+@defproc[(classof/c [object-contract contract?]) contract?]{
+  The same as @racket[class-object/c] without a class contract constraint.
+}
 
 @defproc[(dependent-class-object/c [class-contract contract?]
                                    [make-object-contract procedure?])
@@ -176,24 +180,30 @@ compatibility may not be maintained.
   Like @racket[class-object/c] except the second argument is a procedure
   that accepts the initialization arguments (as keyword arguments or
   rest arguments) and returns an object contract.
+
+  @examples[#:eval evaluator
+    (define dog%/c
+      (dependent-class-object/c
+        (class/c [bark (->m string? string?)])
+        (λ (#:sound sound)
+          (object/c
+            [bark (->m string? (λ (s) (equal? s sound)))]))))
+    (define/contract dog%
+      dog%/c
+      (class object%
+        (init sound)
+        (define/public (bark x) x)
+        (super-new)))
+    (define spot (new dog% [sound "woof"]))
+    (eval:error (send spot bark "meow"))
+    (send spot bark "woof")]
 }
 
-@examples[#:eval evaluator
-  (define dog%/c
-    (dependent-class-object/c
-      (class/c [bark (->m string? string?)])
-      (λ (#:sound sound)
-        (object/c
-          [bark (->m string? (λ (s) (equal? s sound)))]))))
-  (define/contract dog%
-    dog%/c
-    (class object%
-      (init sound)
-      (define/public (bark x) x)
-      (super-new)))
-  (define spot (new dog% [sound "woof"]))
-  (eval:error (send spot bark "meow"))
-  (send spot bark "woof")]
+@defproc[(dependent-classof/c [make-object-contract procedure?]) contract?]{
+  The same as @racket[dependent-class-object/c] without a class contract
+  constraint.
+}
+
 
 @section{@racket[provide] Forms}
 
