@@ -11,15 +11,14 @@
 ;; Dependencies
 
 (define deps
-  '("rackunit-lib"
-    "option-contract-lib"
+  '("contract-etc-lib"
     "base"))
 
 (define build-deps
-  '("option-contract-doc"
-    "sandbox-lib"
-    "chk-lib"
-    "scribble-lib"
+  '("chk-lib"
+    "option-contract-doc"
+    "option-contract-lib"
     "racket-doc"
     "rackunit-lib"
-    ))
+    "sandbox-lib"
+    "scribble-lib"))

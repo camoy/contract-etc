@@ -1,8 +1,8 @@
 #lang racket/base
 
 (require chk
-         racket/contract
-         "../annotate.rkt")
+         contract-etc/annotate
+         racket/contract)
 
 ;; set `CONTRACT_EXERCISE`
 

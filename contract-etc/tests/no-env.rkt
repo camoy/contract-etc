@@ -1,12 +1,8 @@
 #lang racket/base
 
 (require chk
-         racket/contract
-         "../annotate.rkt")
-
-;; set `CONTRACT_EXERCISE_TEST`
-
-(void (putenv "CONTRACT_EXERCISE_TEST" "1"))
+	 contract-etc/annotate
+         racket/contract)
 
 ;; outside `test` submodule
 
@@ -34,11 +30,18 @@
    (bar-ho))
  "hi")
 
+;; make sure we don't break submodule order
+(module+ examples
+  (provide (all-defined-out))
+  (define forty-two 42))
+
 ;; inside `test` submodule
 
 (module+ test
+  (require (submod ".." examples))
+
   (: baz-fo integer?)
-  (define baz-fo 42)
+  (define baz-fo forty-two)
 
   (: baz-ho (-> integer?))
   (define (baz-ho) "hi")
@@ -46,10 +49,8 @@
   (chk
    baz-fo 42
    #:t (procedure? baz-ho)
-   #:x (foo-ho)
-   "foo-ho: broke its own contract"
-   #:x (baz-ho)
-   "baz-ho: broke its own contract"
+   (baz-ho) "hi"
+   (foo-ho) "hi"
 
    #:x
    (let ()
@@ -58,9 +59,8 @@
      (void))
    "qux-fo: broke its own contract"
 
-   #:x
    (let ()
      (: qux-ho (-> integer?))
      (define (qux-ho) "hi")
      (qux-ho))
-   "qux-ho: broke its own contract"))
+   "hi"))
