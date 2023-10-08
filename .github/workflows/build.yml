@@ -14,7 +14,7 @@ jobs:
           architecture: 'x64'
           distribution: 'full'
           version: 'current'
-      - run: raco pkg install contract-etc/ contract-etc-lib/ --auto --no-setup --skip-installed
+      - run: raco pkg install --auto --no-setup --skip-installed contract-etc/ contract-etc-lib/
       - run: raco setup --fast-clean contract-etc
       # We specifically don't want to `raco setup` here because
       # we need control over environment variables for testing.
