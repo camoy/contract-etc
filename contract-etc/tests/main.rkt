@@ -190,4 +190,23 @@
   #:do (define c (make-object bar% 10 11 12 13))
   #:t (send b bar 10 11 '())
   #:t (send c bar 10 11 (list 12 13))
+
+  #:do (define/contract x
+         (channel*/c integer? number?)
+         (make-channel))
+  #:do (thread (λ () (channel-put x 11.5)))
+  #:x (channel-get x)
+  "the channel get of"
+
+  #:do (define/contract y
+         (channel*/c number? integer?)
+         (make-channel))
+  #:x (channel-put y 11.5)
+  "the channel put of"
+
+  #:do (define/contract z
+         (channel*/c number? integer?)
+         (make-channel))
+  #:do (thread (λ () (channel-put x 11)))
+  (channel-get x)  11
   )

@@ -15,7 +15,8 @@
           [class-object/c (-> contract? contract? contract?)]
           [dependent-class-object/c (-> contract? procedure? contract?)]
           [classof/c (-> contract? contract?)]
-          [dependent-classof/c (-> procedure? contract?)])
+          [dependent-classof/c (-> procedure? contract?)]
+          [channel*/c (-> contract? contract? contract?)])
          apply/c
          return/c
          exercise-out
@@ -418,3 +419,29 @@
 
 (define (dependent-classof/c proc)
   (dependent-class-object/c (class/c) proc))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; channel*/c
+
+(define (channel*/c pre-get/c pre-put/c)
+  (define get/c (coerce-contract/f pre-get/c))
+  (define put/c (coerce-contract/f pre-put/c))
+  (define make
+    (if (andmap chaperone-contract? (list get/c put/c))
+        make-chaperone-contract
+        make-contract))
+  (define get-lnp (get/build-late-neg-projection get/c))
+  (define put-lnp (get/build-late-neg-projection put/c))
+  (define (lnp blm)
+    (define get-lnp+blm
+      (get-lnp (blame-add-context blm "the channel get of")))
+    (define put-lnp+blm
+      (put-lnp (blame-add-context blm "the channel put of" #:swap? #t)))
+    (λ (val neg)
+      (chaperone-channel
+       val
+       (λ (ch) (values ch (λ (to-get) (get-lnp+blm to-get neg))))
+       (λ (ch to-set) (put-lnp+blm to-set neg)))))
+  (make #:name `(channel*/c ,(contract-name get/c)
+                            ,(contract-name put/c))
+        #:late-neg-projection lnp))

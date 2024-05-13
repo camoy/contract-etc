@@ -204,6 +204,20 @@ compatibility may not be maintained.
   constraint.
 }
 
+@defproc[(channel*/c [get-contract contract?]
+                     [put-contract contract?])
+          contract?]{
+  Creates a class contract that acts exactly like @racket[channel/c],
+  except that the contract for getting a value and putting a value
+  can be different.
+
+  @examples[#:eval evaluator
+    (define/contract x
+      (channel*/c integer? number?)
+      (make-channel))
+    (thread (λ () (channel-put x 11.5)))
+    (eval:error (channel-get x))]
+}
 
 @section{@racket[provide] Forms}
 
