@@ -16,7 +16,8 @@
           [dependent-class-object/c (-> contract? procedure? contract?)]
           [classof/c (-> contract? contract?)]
           [dependent-classof/c (-> procedure? contract?)]
-          [channel*/c (-> contract? contract? contract?)])
+          [channel*/c (-> contract? contract? contract?)]
+          [async-channel*/c (-> contract? contract? contract?)])
          apply/c
          return/c
          exercise-out
@@ -37,6 +38,7 @@
                      racket/provide-transform)
          (prefix-in int: racket/private/class-internal)
          (prefix-in arr: racket/contract/private/arrow-common)
+         racket/async-channel
          racket/contract/option
          racket/class
          racket/dict
@@ -442,6 +444,27 @@
        val
        (λ (ch) (values ch (λ (to-get) (get-lnp+blm to-get neg))))
        (λ (ch to-set) (put-lnp+blm to-set neg)))))
-  (make #:name `(channel*/c ,(contract-name get/c)
-                            ,(contract-name put/c))
+  (make #:name `(channel*/c ,(contract-name get/c) ,(contract-name put/c))
+        #:late-neg-projection lnp))
+
+(define (async-channel*/c pre-get/c pre-put/c)
+  (define get/c (coerce-contract/f pre-get/c))
+  (define put/c (coerce-contract/f pre-put/c))
+  (define make
+    (if (andmap chaperone-contract? (list get/c put/c))
+        make-chaperone-contract
+        make-contract))
+  (define get-lnp (get/build-late-neg-projection get/c))
+  (define put-lnp (get/build-late-neg-projection put/c))
+  (define (lnp blm)
+    (define get-lnp+blm
+      (get-lnp (blame-add-context blm "the async channel get of")))
+    (define put-lnp+blm
+      (put-lnp (blame-add-context blm "the async channel put of" #:swap? #t)))
+    (λ (val neg)
+      (chaperone-async-channel
+       val
+       (λ (to-get) (get-lnp+blm to-get neg))
+       (λ (to-set) (put-lnp+blm to-set neg)))))
+  (make #:name `(async-channel*/c ,(contract-name get/c) ,(contract-name put/c))
         #:late-neg-projection lnp))

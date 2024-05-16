@@ -219,6 +219,12 @@ compatibility may not be maintained.
     (eval:error (channel-get x))]
 }
 
+@defproc[(async-channel*/c [get-contract contract?]
+                           [put-contract contract?])
+          contract?]{
+  The same as @racket[channel*/c], except for asynchronous channels.
+}
+
 @section{@racket[provide] Forms}
 
 @defform[(exercise-out id ...)]{
